@@ -33,6 +33,9 @@ public class SalesforceConnection {
     private static final ObjectMapper OBJECTMAPPER = new ObjectMapper();
     private static final String APILOGINURI = "https://login.salesforce.com/services/oauth2/token";
     private static final String APIURI = "/services/data/v33.0/";
+    private static final String BUSINESS_OBJECT_URI = "sobjects/";
+    private static final String QUERY_URI = "query/";
+
     private static final Logger logger = LoggerFactory.getLogger(SalesforceConnection.class);
     private RestTemplate restTemplate = new RestTemplate();
     private HttpHeaders headers = new HttpHeaders();
@@ -41,6 +44,8 @@ public class SalesforceConnection {
     String refreshToken_ =null;
     String clientId_ = null;
     String clientSecret_ = null;
+
+    private TokenRefreshHandler  tokenRefreshHandler= null;
 
 
     public SalesforceConnection() throws SalesforceApiException {
@@ -59,17 +64,17 @@ public class SalesforceConnection {
 
 
 
-    public Contact process(SalesforceRestRequest request, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
-        String url = buildQueryUrl(request, tokenRefreshHandler);
+    public Contact process(SalesforceRestRequest request) throws SalesforceApiException {
+        String url = buildQueryUrl(request);
 
-        String c = execRestGetQuery(url, String.class, tokenRefreshHandler);
+        String c = execRestGetQuery(url, String.class);
         Contact contact  = null;
         try {
             JsonNode root = OBJECTMAPPER.readTree(c);
             if(root!=null && root.get("records")!=null && root.get("records").get(0)!=null){
                 contact = OBJECTMAPPER.readValue(root.get("records").get(0).toString(), Contact.class);
-                contact.setUser(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/User/" + contact.getOwnerId(), User.class, tokenRefreshHandler));
-                contact.setAccount(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/Account/" + contact.getAccountId(), Account.class, tokenRefreshHandler));
+                contact.setUser(execRestGetQuery(sfInstanceUrl + APIURI + BUSINESS_OBJECT_URI+ "User/" + contact.getOwnerId(), User.class));
+                contact.setAccount(execRestGetQuery(sfInstanceUrl + APIURI + BUSINESS_OBJECT_URI+ "Account/" + contact.getAccountId(), Account.class));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -78,12 +83,12 @@ public class SalesforceConnection {
 
     }
 
-    private String buildQueryUrl(SalesforceRestRequest request, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
-        StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + "query/");
+    private String buildQueryUrl(SalesforceRestRequest request) throws SalesforceApiException {
+        StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + QUERY_URI);
         StringBuilder sbQuery = new StringBuilder("?q=SELECT ");
 
         boolean first = true;
-        Map fieldValuesMap = (Map)getFieldValues("Contact", tokenRefreshHandler);
+        Map fieldValuesMap = (Map)getFieldValues("Contact");
         List fields = (List)fieldValuesMap.get("fields");
         for (Object currentField : fields) {
             if (first) {
@@ -103,7 +108,12 @@ public class SalesforceConnection {
         return null;
     }
 
-    private <T> T execRestGetQuery(String url, Class<T> type, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
+    private <T> T execRestGetQuery(String s, Class<T> mapClass) throws SalesforceApiException {
+        return execRestGetQuery(s,mapClass,true);
+    }
+
+
+    private <T> T execRestGetQuery(String url, Class<T> type, boolean firstAttempt) throws SalesforceApiException {
         if (accessToken == null) {
             throw new NoAuthenticationException("No access token available");
         }
@@ -125,14 +135,14 @@ public class SalesforceConnection {
         } catch (Exception e) {
             logger.error(e +"");
             if(e.getMessage()!=null && e.getMessage().contains(UnauthorizedException.ERROR401)){
-                if(tokenRefreshHandler!=null){
+                if(tokenRefreshHandler!=null && firstAttempt){
                     try {
                         Map<String,String> newConnectionKeys = refreshAccessToken();
                         tokenRefreshHandler.handleRefresh(newConnectionKeys);
                         accessToken = newConnectionKeys.get("access_token");
                         sfInstanceUrl = newConnectionKeys.get("instance_url");
                         headers.set("Authorization", "Bearer " + accessToken);
-                        return execRestGetQuery(url, type, null);
+                        return execRestGetQuery(url, type, false);
                     } catch (IOException e1) {
                         e1.printStackTrace();
                     }
@@ -146,9 +156,10 @@ public class SalesforceConnection {
         return null;
     }
 
-    public Map<String, Object> getFieldValues(String salesForceObjectName, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
-        return execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/" + salesForceObjectName + "/describe/", Map.class, tokenRefreshHandler);
+    public Map<String, Object> getFieldValues(String salesForceObjectName) throws SalesforceApiException {
+        return execRestGetQuery(sfInstanceUrl + APIURI + BUSINESS_OBJECT_URI + salesForceObjectName + "/describe/", Map.class);
     }
+
 
     public void close() {
         accessToken = null;
@@ -198,4 +209,11 @@ public class SalesforceConnection {
         Map<String,String> res = OBJECTMAPPER.readValue(result.getBody(), Map.class);
         return res;
     }
+
+
+    public void setTokenRefreshHandler(TokenRefreshHandler tokenRefreshHandler) {
+        this.tokenRefreshHandler = tokenRefreshHandler;
+    }
+
+
 }
