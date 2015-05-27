@@ -22,6 +22,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -65,7 +66,7 @@ public class SalesforceConnection {
 
 
     public Contact process(SalesforceRestRequest request) throws SalesforceApiException {
-        String url = buildQueryUrl(request);
+        String url = buildCompleteFieldsQuery(request);
 
         String c = execRestGetQuery(url, String.class);
         Contact contact  = null;
@@ -83,12 +84,52 @@ public class SalesforceConnection {
 
     }
 
+
+    private String buildCompleteFieldsQuery(SalesforceRestRequest request) throws SalesforceApiException {
+        StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + QUERY_URI);
+        StringBuilder sbQuery = new StringBuilder("?q=SELECT ");
+
+        List<String> fieldNamesList = request.filterFields(getFieldNamesList(request.getBusinessObject(), request.getResultDepth()));
+        boolean first=true;
+        for (String field : fieldNamesList) {
+            if (first) {
+                first = false;
+            } else {
+                sbQuery.append(",");
+            }
+            sbQuery.append(field);
+        }
+
+
+        sbQuery.append(" FROM "+request.getBusinessObject()+" "+request.getCriteria());
+        return sb.append(sbQuery.toString()).toString();
+    }
+
+    private List<String> getFieldNamesList(String objectName, int depth) throws SalesforceApiException {
+        Map fieldValuesMap = (Map)getFieldValues(objectName);
+        List fields = (List)fieldValuesMap.get("fields");
+        List<String> result = new ArrayList<String>();
+        for (Object currentField : fields) {
+            result.add((String) ((Map) currentField).get("name"));
+            if (((Map) currentField).get("referenceTo") != null
+                    && ((List)((Map) currentField).get("referenceTo")).size()!=0
+                    && depth > 0) {
+                List<String> subList = getFieldNamesList((String) ((List)((Map) currentField).get("referenceTo")).get(0), depth - 1);
+                for (String s : subList) {
+                    result.add((String) ((Map) currentField).get("relationshipName") + "." + s);
+                }
+            }
+        }
+        return result;
+    }
+
+
     private String buildQueryUrl(SalesforceRestRequest request) throws SalesforceApiException {
         StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + QUERY_URI);
         StringBuilder sbQuery = new StringBuilder("?q=SELECT ");
 
         boolean first = true;
-        Map fieldValuesMap = (Map)getFieldValues("Contact");
+        Map fieldValuesMap = (Map)getFieldValues(request.getBusinessObject());
         List fields = (List)fieldValuesMap.get("fields");
         for (Object currentField : fields) {
             if (first) {
@@ -98,14 +139,8 @@ public class SalesforceConnection {
             }
             sbQuery.append(((Map) currentField).get("name"));
         }
-
-
-        if (SalesforceRestRequest.Type.PHONE_NUMBER.equals(request.getType())) {
-            sbQuery.append(" FROM Contact WHERE MobilePhone like '"+request.getValue()+"'");
-                return sb.append(sbQuery.toString()).toString();
-
-        }
-        return null;
+        sbQuery.append(" FROM "+request.getBusinessObject()+" "+request.getCriteria());
+        return sb.append(sbQuery.toString()).toString();
     }
 
     private <T> T execRestGetQuery(String s, Class<T> mapClass) throws SalesforceApiException {
