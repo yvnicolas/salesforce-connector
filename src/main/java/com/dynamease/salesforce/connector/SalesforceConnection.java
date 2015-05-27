@@ -1,8 +1,12 @@
 package com.dynamease.salesforce.connector;
 
+import com.dynamease.salesforce.exception.NoAuthenticationException;
+import com.dynamease.salesforce.exception.SalesforceApiException;
+import com.dynamease.salesforce.exception.UnauthorizedException;
 import com.dynamease.salesforce.objectentities.Account;
 import com.dynamease.salesforce.objectentities.Contact;
 import com.dynamease.salesforce.objectentities.User;
+import com.dynamease.salesforce.tool.TokenRefreshHandler;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -34,6 +38,9 @@ public class SalesforceConnection {
     private HttpHeaders headers = new HttpHeaders();
     String accessToken = null;
     String sfInstanceUrl = null; //SalesForce Instance on which we are supposed to connect to once token retrieved
+    String refreshToken_ =null;
+    String clientId_ = null;
+    String clientSecret_ = null;
 
 
     public SalesforceConnection() throws SalesforceApiException {
@@ -41,44 +48,28 @@ public class SalesforceConnection {
         OBJECTMAPPER.configure(MapperFeature.AUTO_DETECT_SETTERS, true);
     }
 
-    public void open(String clientId, String clientSecret, String login, String password) {
-        MultiValueMap<String, String> salesforceCall = new LinkedMultiValueMap<String, String>();
-        salesforceCall.add("grant_type", "password");
-        salesforceCall.add("client_id", clientId);
-        salesforceCall.add("client_secret", clientSecret);
-        salesforceCall.add("username", login);
-        salesforceCall.add("password", password);
-
-        logger.debug("Submitting form value map {}", salesforceCall.toString());
-        logger.debug("Headers : {}", headers.toString());
-
-        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<MultiValueMap<String, String>>(salesforceCall, this.headers);
-        try {
-            ResponseEntity<String> result = restTemplate.exchange(APILOGINURI, HttpMethod.POST, entity, String.class);
-            logger.debug("Result headers : {}", result.getHeaders().toString());
-            logger.debug("Result body : {}", result.getBody());
-            Map<String, Object> resultBody = OBJECTMAPPER.readValue(result.getBody(), Map.class);
-            accessToken = (String) resultBody.get("access_token");
-            sfInstanceUrl = (String) resultBody.get("instance_url");
-            logger.info("Result token : {}", accessToken);
-        } catch (Exception e) {
-            logger.error(e + "");
-        }
+    public void open(String clientId, String clientSecret, String accessToken, String instanceUrl, String refreshToken){
+        this.accessToken=accessToken;
+        this.sfInstanceUrl=instanceUrl;
+        this.refreshToken_ =refreshToken;
+        this.clientId_=clientId;
+        this.clientSecret_=clientSecret;
         headers.set("Authorization", "Bearer " + accessToken);
-
     }
 
-    public Contact process(SalesforceRestRequest request) throws SalesforceApiException {
-        String url = buildQueryUrl(request);
 
-        String c = execRestGetQuery(url, String.class);
+
+    public Contact process(SalesforceRestRequest request, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
+        String url = buildQueryUrl(request, tokenRefreshHandler);
+
+        String c = execRestGetQuery(url, String.class, tokenRefreshHandler);
         Contact contact  = null;
         try {
             JsonNode root = OBJECTMAPPER.readTree(c);
             if(root!=null && root.get("records")!=null && root.get("records").get(0)!=null){
                 contact = OBJECTMAPPER.readValue(root.get("records").get(0).toString(), Contact.class);
-                contact.setUser(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/User/" + contact.getOwnerId(), User.class));
-                contact.setAccount(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/Account/" + contact.getAccountId(), Account.class));
+                contact.setUser(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/User/" + contact.getOwnerId(), User.class, tokenRefreshHandler));
+                contact.setAccount(execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/Account/" + contact.getAccountId(), Account.class, tokenRefreshHandler));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -87,12 +78,14 @@ public class SalesforceConnection {
 
     }
 
-    private String buildQueryUrl(SalesforceRestRequest request) throws SalesforceApiException {
+    private String buildQueryUrl(SalesforceRestRequest request, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
         StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + "query/");
         StringBuilder sbQuery = new StringBuilder("?q=SELECT ");
 
         boolean first = true;
-        for (Object currentField : ((List) getFieldValues("Contact").get("fields"))) {
+        Map fieldValuesMap = (Map)getFieldValues("Contact", tokenRefreshHandler);
+        List fields = (List)fieldValuesMap.get("fields");
+        for (Object currentField : fields) {
             if (first) {
                 first = false;
             } else {
@@ -110,9 +103,9 @@ public class SalesforceConnection {
         return null;
     }
 
-    private <T> T execRestGetQuery(String url, Class<T> type) throws SalesforceApiException {
+    private <T> T execRestGetQuery(String url, Class<T> type, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
         if (accessToken == null) {
-            throw new SalesforceApiException("No access token available");
+            throw new NoAuthenticationException("No access token available");
         }
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<String, String>();
@@ -131,16 +124,78 @@ public class SalesforceConnection {
             return resultObject;
         } catch (Exception e) {
             logger.error(e +"");
+            if(e.getMessage()!=null && e.getMessage().contains(UnauthorizedException.ERROR401)){
+                if(tokenRefreshHandler!=null){
+                    try {
+                        Map<String,String> newConnectionKeys = refreshAccessToken();
+                        tokenRefreshHandler.handleRefresh(newConnectionKeys);
+                        accessToken = newConnectionKeys.get("access_token");
+                        sfInstanceUrl = newConnectionKeys.get("instance_url");
+                        headers.set("Authorization", "Bearer " + accessToken);
+                        return execRestGetQuery(url, type, null);
+                    } catch (IOException e1) {
+                        e1.printStackTrace();
+                    }
+                }
+                else{
+                    throw new UnauthorizedException(e);
+
+                }
+            }
         }
         return null;
     }
 
-    public Map<String, Object> getFieldValues(String salesForceObjectName) throws SalesforceApiException {
-        return execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/" + salesForceObjectName + "/describe/", Map.class);
+    public Map<String, Object> getFieldValues(String salesForceObjectName, TokenRefreshHandler tokenRefreshHandler) throws SalesforceApiException {
+        return execRestGetQuery(sfInstanceUrl + APIURI + "sobjects/" + salesForceObjectName + "/describe/", Map.class, tokenRefreshHandler);
     }
 
     public void close() {
         accessToken = null;
         sfInstanceUrl = null;
+        refreshToken_ = null;
+        this.clientId_ = null;
+        this.clientSecret_ = null;
+    }
+
+    public Map<String,String> refreshAccessToken() throws IOException {
+        return refreshAccessToken(refreshToken_);
+    }
+
+    private Map<String,String> refreshAccessToken(String refreshToken) throws IOException {
+        if(refreshToken==null){
+            logger.warn("NO Refresh token:access token retrieval was not possible");
+            return null;
+        }
+        MultiValueMap<String, String> salesforceCall = new LinkedMultiValueMap<String, String>();
+        salesforceCall.add("grant_type", "refresh_token");
+        salesforceCall.add("client_id", clientId_);
+        salesforceCall.add("client_secret", clientSecret_);
+        salesforceCall.add("refresh_token", refreshToken);
+
+        logger.debug("Submitting form value map {}", salesforceCall.toString());
+        logger.debug("Headers : {}", headers.toString());
+
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<MultiValueMap<String, String>>(salesforceCall, new HttpHeaders());
+        ResponseEntity<String> result = restTemplate.exchange(APILOGINURI, HttpMethod.POST, entity, String.class);
+        Map<String,String> res = OBJECTMAPPER.readValue(result.getBody(),Map.class);
+        return res;
+    }
+
+    public Map<String,String> getAccessToken(String clientId, String clientSecret, String code, String redirect_uri) throws IOException {
+        MultiValueMap<String, String> salesforceCall = new LinkedMultiValueMap<String, String>();
+        salesforceCall.add("grant_type", "authorization_code");
+        salesforceCall.add("client_id", clientId);
+        salesforceCall.add("client_secret", clientSecret);
+        salesforceCall.add("redirect_uri", redirect_uri);
+        salesforceCall.add("code", code);
+
+        logger.debug("Submitting form value map {}", salesforceCall.toString());
+        logger.debug("Headers : {}", headers.toString());
+
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<MultiValueMap<String, String>>(salesforceCall, this.headers);
+        ResponseEntity<String> result = restTemplate.exchange(APILOGINURI, HttpMethod.POST, entity, String.class);
+        Map<String,String> res = OBJECTMAPPER.readValue(result.getBody(), Map.class);
+        return res;
     }
 }

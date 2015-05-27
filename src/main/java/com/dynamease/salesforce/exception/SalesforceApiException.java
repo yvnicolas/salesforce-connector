@@ -1,4 +1,4 @@
-package com.dynamease.salesforce.connector;
+package com.dynamease.salesforce.exception;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 
@@ -19,5 +19,9 @@ public class SalesforceApiException extends Exception {
 
     public SalesforceApiException(String msg, Throwable e) {
         super(msg,e);
+    }
+
+    public SalesforceApiException(Exception e) {
+        super(e);
     }
 }
