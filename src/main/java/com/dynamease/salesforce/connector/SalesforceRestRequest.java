@@ -44,7 +44,7 @@ public class SalesforceRestRequest {
             return fields;
         List<String> result = new ArrayList<String>();
         for(String field:fields){
-            if(!field.contains("\\.")){
+            if(!field.contains(".")){
                 result.add(field);
             }else{
                 for(String filter:relationshipFilter){

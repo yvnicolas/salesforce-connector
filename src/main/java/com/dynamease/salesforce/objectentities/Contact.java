@@ -55,10 +55,11 @@ public class Contact {
     @JsonProperty("BirthDate")
     String birthDate = null;
 
+
+    @JsonProperty("Account")
     Account account;
 
-
-
+    @JsonProperty("Owner")
     User user;
 
     public String getLastName() {

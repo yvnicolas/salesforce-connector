@@ -74,8 +74,6 @@ public class SalesforceConnection {
             JsonNode root = OBJECTMAPPER.readTree(c);
             if(root!=null && root.get("records")!=null && root.get("records").get(0)!=null){
                 contact = OBJECTMAPPER.readValue(root.get("records").get(0).toString(), Contact.class);
-                contact.setUser(execRestGetQuery(sfInstanceUrl + APIURI + BUSINESS_OBJECT_URI+ "User/" + contact.getOwnerId(), User.class));
-                contact.setAccount(execRestGetQuery(sfInstanceUrl + APIURI + BUSINESS_OBJECT_URI+ "Account/" + contact.getAccountId(), Account.class));
             }
         } catch (IOException e) {
             e.printStackTrace();
