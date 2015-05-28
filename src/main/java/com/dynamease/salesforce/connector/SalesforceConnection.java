@@ -64,7 +64,13 @@ public class SalesforceConnection {
     }
 
 
-
+    /**
+     * SalesForce Query entry point
+     * You must provide a well formed request
+     * @param request
+     * @return
+     * @throws SalesforceApiException
+     */
     public Contact process(SalesforceRestRequest request) throws SalesforceApiException {
         String url = buildCompleteFieldsQuery(request);
 
@@ -81,6 +87,7 @@ public class SalesforceConnection {
         return contact;
 
     }
+
 
 
     private String buildCompleteFieldsQuery(SalesforceRestRequest request) throws SalesforceApiException {
@@ -121,25 +128,6 @@ public class SalesforceConnection {
         return result;
     }
 
-
-    private String buildQueryUrl(SalesforceRestRequest request) throws SalesforceApiException {
-        StringBuilder sb = new StringBuilder(sfInstanceUrl + APIURI + QUERY_URI);
-        StringBuilder sbQuery = new StringBuilder("?q=SELECT ");
-
-        boolean first = true;
-        Map fieldValuesMap = (Map)getFieldValues(request.getBusinessObject());
-        List fields = (List)fieldValuesMap.get("fields");
-        for (Object currentField : fields) {
-            if (first) {
-                first = false;
-            } else {
-                sbQuery.append(",");
-            }
-            sbQuery.append(((Map) currentField).get("name"));
-        }
-        sbQuery.append(" FROM "+request.getBusinessObject()+" "+request.getCriteria());
-        return sb.append(sbQuery.toString()).toString();
-    }
 
     private <T> T execRestGetQuery(String s, Class<T> mapClass) throws SalesforceApiException {
         return execRestGetQuery(s,mapClass,true);

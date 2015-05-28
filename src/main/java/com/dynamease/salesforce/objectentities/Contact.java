@@ -3,6 +3,9 @@ package com.dynamease.salesforce.objectentities;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
+ * Json Bean used by jackson. Fields must be mapped using @JsonProperty
+ * because of SalesForce field names that start with a upper case character
+ *
  * Created by Gregoire on 19/05/2015.
  */
 public class Contact {
