@@ -21,8 +21,10 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.IOException;
+import java.io.*;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +40,9 @@ public class SalesforceConnection {
     private static final String QUERY_URI = "query/";
 
     private static final Logger logger = LoggerFactory.getLogger(SalesforceConnection.class);
+
+
+    private String cacheFolder = null;
     private RestTemplate restTemplate = new RestTemplate();
     private HttpHeaders headers = new HttpHeaders();
     String accessToken = null;
@@ -111,6 +116,18 @@ public class SalesforceConnection {
     }
 
     private List<String> getFieldNamesList(String objectName, int depth) throws SalesforceApiException {
+        File cacheFile = null;
+        if(cacheFolder!=null){
+            File folder = new File(cacheFolder);
+            if(folder.exists() && folder.isDirectory()){
+                cacheFile = new File(folder,objectName+"-"+depth);
+                if(cacheFile.exists()){
+                    String fileContent = readFile(cacheFile);
+                    String[] fieldNames = fileContent.split(",");
+                    return Arrays.asList(fieldNames);
+                }
+            }
+        }
         Map fieldValuesMap = (Map)getFieldValues(objectName);
         List fields = (List)fieldValuesMap.get("fields");
         List<String> result = new ArrayList<String>();
@@ -125,7 +142,43 @@ public class SalesforceConnection {
                 }
             }
         }
+
+        saveToFile(cacheFile, result);
         return result;
+    }
+
+    private void saveToFile(File cacheFile, List<String> fields) {
+        if(cacheFile==null) return;
+        BufferedWriter writer = null;
+        try
+        {
+            writer = new BufferedWriter( new FileWriter( cacheFile));
+            boolean first = true;
+            for(String field:fields){
+                if(!first){
+                    writer.write(",");
+                }
+                writer.write(field);
+                first=false;
+            }
+            writer.flush();
+        }
+        catch ( IOException e)
+        {
+            logger.error("Error writing fields:"+e);
+        }
+        finally
+        {
+            try
+            {
+                if ( writer != null)
+                    writer.close( );
+            }
+            catch ( IOException e)
+            {
+                logger.error("Error closing file:"+cacheFile.getAbsolutePath());
+            }
+        }
     }
 
 
@@ -237,4 +290,21 @@ public class SalesforceConnection {
     }
 
 
+    String readFile(File file) {
+
+        try {
+            byte[] bytes = Files.readAllBytes(file.toPath());
+            return new String(bytes,"UTF-8");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
+
+    public void setCacheFolder(String cacheFolder) {
+        this.cacheFolder = cacheFolder;
+    }
 }
