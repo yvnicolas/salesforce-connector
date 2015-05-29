@@ -201,4 +201,28 @@ public class Contact {
     public void setUser(User user) {
         this.user = user;
     }
+
+
+    @Override
+    public String toString() {
+        return "Contact{" +
+                "ownerId='" + ownerId + '\'' +
+                ", accountId='" + accountId + '\'' +
+                ", LastName='" + LastName + '\'' +
+                ", firstName='" + firstName + '\'' +
+                ", name='" + name + '\'' +
+                ", phone='" + phone + '\'' +
+                ", fax='" + fax + '\'' +
+                ", mobilePhone='" + mobilePhone + '\'' +
+                ", homePhone='" + homePhone + '\'' +
+                ", otherPhone='" + otherPhone + '\'' +
+                ", assistantPhone='" + assistantPhone + '\'' +
+                ", email='" + email + '\'' +
+                ", title='" + title + '\'' +
+                ", department='" + department + '\'' +
+                ", birthDate='" + birthDate + '\'' +
+                ", account=" + account +
+                ", user=" + user +
+                '}';
+    }
 }

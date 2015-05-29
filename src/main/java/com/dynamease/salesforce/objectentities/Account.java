@@ -74,4 +74,16 @@ public class Account {
     public void setSite(String site) {
         this.site = site;
     }
+
+    @Override
+    public String toString() {
+        return "Account{" +
+                "name='" + name + '\'' +
+                ", industry='" + industry + '\'' +
+                ", website='" + website + '\'' +
+                ", annualRevenue='" + annualRevenue + '\'' +
+                ", numberOfEmployees='" + numberOfEmployees + '\'' +
+                ", site='" + site + '\'' +
+                '}';
+    }
 }

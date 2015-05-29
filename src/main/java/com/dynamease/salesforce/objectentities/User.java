@@ -152,4 +152,23 @@ public class User {
     public void setAlias(String alias) {
         this.alias = alias;
     }
+
+    @Override
+    public String toString() {
+        return "User{" +
+                "userName='" + userName + '\'' +
+                ", lastName='" + lastName + '\'' +
+                ", firstName='" + firstName + '\'' +
+                ", name='" + name + '\'' +
+                ", companyName='" + companyName + '\'' +
+                ", division='" + division + '\'' +
+                ", department='" + department + '\'' +
+                ", title='" + title + '\'' +
+                ", email='" + email + '\'' +
+                ", phone='" + phone + '\'' +
+                ", fax='" + fax + '\'' +
+                ", mobilePhone='" + mobilePhone + '\'' +
+                ", alias='" + alias + '\'' +
+                '}';
+    }
 }
