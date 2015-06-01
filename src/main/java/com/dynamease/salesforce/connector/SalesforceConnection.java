@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * A Connection to SalesForce, using a WEB OAuth workflow
  * Created by Gregoire on 18/05/2015.
  */
 public class SalesforceConnection {
@@ -59,6 +60,15 @@ public class SalesforceConnection {
         OBJECTMAPPER.configure(MapperFeature.AUTO_DETECT_SETTERS, true);
     }
 
+    /**
+     *
+     * @param clientId
+     * @param clientSecret
+     * @param accessToken
+     * @param instanceUrl url on which SalesForceConection will connect to;
+     *                    it is given by SalesForce
+     * @param refreshToken
+     */
     public void open(String clientId, String clientSecret, String accessToken, String instanceUrl, String refreshToken){
         this.accessToken=accessToken;
         this.sfInstanceUrl=instanceUrl;
@@ -290,7 +300,7 @@ public class SalesforceConnection {
     }
 
 
-    String readFile(File file) {
+    private String readFile(File file) {
 
         try {
             byte[] bytes = Files.readAllBytes(file.toPath());
